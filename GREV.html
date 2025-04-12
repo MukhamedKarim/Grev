@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Алгоритм Берлекемпа-Месси</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      max-width: 1000px;
+      margin: auto;
+      background: #fff;
+      color: #000;
+    }
+    input, button {
+      font-size: 16px;
+      padding: 5px;
+      margin-top: 10px;
+    }
+    #result {
+      margin-top: 20px;
+      white-space: pre-wrap;
+      background: #f0f0f0;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+    }
+    canvas {
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      max-width: 100%;
+      height: 240px !important;
+    }
+    table {
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #000;
+      padding: 5px 10px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Алгоритм Берлекемпа-Месси</h1>
+  <label>Введите двоичную последовательность (через пробел):</label><br>
+  <input id="sequence" size="70" placeholder="Пример: 0 1 1 0 1 0 0 1 1 0 1"/><br>
+  <button onclick="run()">Рассчитать</button>
+
+  <div id="result"></div>
+
+  <div class="charts-grid">
+    <canvas id="seqChart"></canvas>
+    <canvas id="LChart"></canvas>
+    <canvas id="polyChart"></canvas>
+    <canvas id="verifyChart"></canvas>
+  </div>
+
+  <script>
+    function destroyIfExists(name) {
+      if (window[name] && typeof window[name].destroy === 'function') {
+        window[name].destroy();
+      }
+    }
+
+    function run() {
+      const input = document.getElementById("sequence").value.trim();
+      const tokens = input.split(/\s+/).filter(x => x !== "");
+      if (!tokens.every(x => x === "0" || x === "1")) {
+        document.getElementById("result").textContent = "Ошибка: последовательность должна содержать только 0 и 1, разделённые пробелами.";
+        return;
+      }
+      const S = tokens.map(Number);
+      const N = S.length;
+
+      let C = [1], B = [1], L = 0, m = -1;
+      const historyL = [], steps = [], historyC = [];
+
+      for (let n = 0; n < N; n++) {
+        let d = S[n];
+        for (let i = 1; i <= L; i++) {
+          d ^= (C[i] || 0) & S[n - i];
+        }
+        steps.push(`Шаг ${n}: d = ${d}, C(x) = ${polyToString(C)}`);
+        historyL.push(L);
+        historyC.push(C.slice());
+
+        if (d === 0) continue;
+
+        const T = C.slice();
+        const shift = Array(n - m).fill(0).concat(B);
+        if (shift.length > C.length) C = C.concat(Array(shift.length - C.length).fill(0));
+        for (let i = 0; i < shift.length; i++) {
+          C[i] ^= shift[i] || 0;
+        }
+
+        if (2 * L <= n) {
+          L = n + 1 - L;
+          B = T;
+          m = n;
+        }
+      }
+
+      const resultText = `Пошаговое выполнение:\n${steps.join("\n")}\n\nЛинейная сложность: ${L}\nПолином обратной связи: ${polyToString(C)}\n`;
+      document.getElementById("result").textContent = resultText;
+
+      drawSeqChart(S);
+      drawLChart(historyL);
+      drawPolyChart(C);
+      drawVerifyChart(C, S);
+      drawStepsTable(S);
+    }
+
+    function polyToString(poly) {
+      const terms = [];
+      for (let i = poly.length - 1; i >= 0; i--) {
+        if (poly[i]) {
+          if (i === 0) terms.push("1");
+          else if (i === 1) terms.push("x");
+          else terms.push(`x^${i}`);
+        }
+      }
+      return terms.join(" + ") || "0";
+    }
+
+    function drawSeqChart(S) {
+      destroyIfExists('seqChart');
+      const ctx = document.getElementById("seqChart").getContext("2d");
+      window.seqChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: S.map((_, i) => i),
+          datasets: [{
+            label: "Исходная последовательность",
+            data: S,
+            backgroundColor: S.map(v => v ? '#007bff' : '#f44336'),
+          }]
+        },
+        options: {
+          plugins: { title: { display: true, text: 'Исходная последовательность' } },
+          scales: {
+            y: { beginAtZero: true, max: 1, ticks: { stepSize: 1 } },
+            x: { title: { display: true, text: 'Индекс' } }
+          }
+        }
+      });
+    }
+
+    function drawLChart(data) {
+      destroyIfExists('LChart');
+      const ctx = document.getElementById("LChart").getContext("2d");
+      window.LChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: data.map((_, i) => i),
+          datasets: [{
+            label: "Линейная сложность",
+            data: data,
+            fill: false,
+            borderColor: "#007bff",
+            tension: 0.1
+          }]
+        },
+        options: {
+          plugins: { title: { display: true, text: 'Изменение линейной сложности' } },
+          scales: {
+            y: { beginAtZero: true },
+            x: { title: { display: true, text: 'Шаг' } }
+          }
+        }
+      });
+    }
+
+    function drawPolyChart(C) {
+      destroyIfExists('polyChart');
+      const ctx = document.getElementById("polyChart").getContext("2d");
+      window.polyChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: C.map((_, i) => i),
+          datasets: [{
+            label: "Коэффициенты C(x)",
+            data: C,
+            backgroundColor: C.map(v => v ? '#007bff' : '#eee')
+          }]
+        },
+        options: {
+          plugins: { title: { display: true, text: 'Ненулевые коэффициенты C(x)' } },
+          scales: {
+            y: { beginAtZero: true, max: 1, ticks: { stepSize: 1 } },
+            x: { title: { display: true, text: 'Степень' } }
+          }
+        }
+      });
+    }
+
+    function drawVerifyChart(C, S) {
+      destroyIfExists('verifyChart');
+      const result = [];
+      const L = C.length - 1;
+      for (let n = L; n < S.length; n++) {
+        let d = 0;
+        for (let i = 1; i <= L; i++) {
+          d ^= (C[i] || 0) & S[n - i];
+        }
+        d ^= S[n];
+        result.push(d === 0 ? 1 : 0);
+      }
+
+      const ctx = document.getElementById("verifyChart").getContext("2d");
+      window.verifyChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: result.map((_, i) => i + L),
+          datasets: [{
+            label: "Совпадение с C(x)",
+            data: result,
+            backgroundColor: result.map(v => v ? '#4caf50' : '#f44336')
+          }]
+        },
+        options: {
+          plugins: { title: { display: true, text: 'Проверка рекуррентного соотношения' } },
+          scales: {
+            y: { beginAtZero: true, max: 1 },
+            x: { title: { display: true, text: 'Индекс n' } }
+          }
+        }
+      });
+    }
+
+    function drawStepsTable(S) {
+      let C = [1], B = [1], L = 0, m = -1;
+      const rows = [];
+
+      for (let n = 0; n < S.length; n++) {
+        let d = S[n];
+        for (let i = 1; i <= L; i++) {
+          d ^= (C[i] || 0) & S[n - i];
+        }
+
+        const oldC = polyToString(C);
+        const oldB = polyToString(B);
+        let update = "-";
+
+        if (d !== 0) {
+          const T = C.slice();
+          const shift = Array(n - m).fill(0).concat(B);
+          if (shift.length > C.length) C = C.concat(Array(shift.length - C.length).fill(0));
+          for (let i = 0; i < shift.length; i++) {
+            C[i] ^= shift[i] || 0;
+          }
+          update = polyToString(C);
+          if (2 * L <= n) {
+            L = n + 1 - L;
+            B = T;
+            m = n;
+          }
+        }
+
+        rows.push(`<tr>
+          <td>${n}</td>
+          <td>${S[n]}</td>
+          <td>${d}</td>
+          <td>${oldC}</td>
+          <td>${L}</td>
+          <td>${m}</td>
+          <td>${oldB}</td>
+          <td>${update}</td>
+        </tr>`);
+      }
+
+      const table = `<h3>Пошаговые вычисления алгоритма Берлекемпа-Месси:</h3>
+        <table>
+          <tr><th>n</th><th>sₙ</th><th>d</th><th>C(x)</th><th>L</th><th>m</th><th>B(x)</th><th>Обновление C(x)</th></tr>
+          ${rows.join("\n")}
+        </table>`;
+
+      document.getElementById("result").innerHTML += table;
+    }
+  </script>
+</body>
+</html>
